@@ -1,6 +1,6 @@
 require "./spec_helper"
 
-describe CadmiumWordnet do
+describe Cadmium::Wordnet do
   # TODO: Write tests
 
   it "works" do

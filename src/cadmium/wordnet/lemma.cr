@@ -46,7 +46,7 @@ module Cadmium
       # pointer symbols is defined in pointers.cr.
       getter pointer_symbols : Array(String)
 
-      @@cache = {} of String => Hash(String, Tuple(String, Int32))
+      @@cache = {} of POS => Hash(String, Tuple(String, Int32))
 
       # Create a lemma from a line in an lexicon file. You should not be creating Lemmas by hand; instead,
       # use the Wordnet::Lemma.find and Wordnet::Lemma.find_all methods to find the Lemma for a word.
@@ -79,7 +79,7 @@ module Cadmium
 
       # Find all lemmas for this word across all known parts of speech
       def self.find_all(word : String)
-        [:noun, :verb, :adj, :adv].flat_map do |pos|
+        [POS::Noun, POS::Verb, POS::Adj, POS::Adv].map do |pos|
           find(word, pos) || [] of Lemma
         end
       end
@@ -88,23 +88,50 @@ module Cadmium
       # "adj", "adv", "noun", "verb". Additionally, you can use the shorthand
       # forms of each of these ("a", "r", "n", "v")/
       def self.find(word : String, pos : POS)
-        # Map shorthand POS to full forms
-        pos = pos.to_s.downcase
-
-        cache = @@cache[pos] ||= build_cache(pos)
+        cache = build_cache(pos)
         if cache.has_key?(word)
           found = cache[word]
           Lemma.new(*found)
         end
       end
 
-      private def self.build_cache(pos)
-        cache = {} of String => Tuple(String, Int32)
-        DB.open(File.join("dict", "index.#{pos}")).each_line.each_with_index do |line, index|
-          word = line[0, line.index(SPACE) || -1]
-          cache[word] = {line, index + 1}
+      # Find a random lemma
+      def self.random(pos : POS? = nil, min : Int32? = nil, max : Int32? = nil, random : Random = Random.new)
+        min ||= 0
+        max ||= 1000000
+
+        if pos
+          cache = build_cache(pos)
+          items = cache.select { |w| w.size >= min && w.size <= max }
+          lemma = items.sample(random)[1] if items.size > 0
+        else
+          lemma = [POS::Noun, POS::Verb, POS::Adj, POS::Adv].map do |pos|
+            cache = build_cache(pos)
+            items = cache.select { |w| w.size >= min && w.size <= max }
+            items.sample(random)[1] if items.size > 0
+          end.compact.sample(random)
         end
-        cache
+
+        if lemma
+          Lemma.new(lemma[0], lemma[1])
+        end
+      end
+
+      private def self.build_cache
+        [POS::Noun, POS::Verb, POS::Adj, POS::Adv].each do |pos|
+          build_cache(pos)
+        end
+      end
+
+      private def self.build_cache(pos : POS)
+        return @@cache[pos] if @@cache.has_key?(pos)
+        pos_cache = {} of String => Tuple(String, Int32)
+        DB.open(File.join("dict", "index.#{pos.to_s.downcase}")).each_line.each_with_index do |line, index|
+          word = line[0, line.index(SPACE) || -1]
+          pos_cache[word] = {line, index + 1}
+        end
+        @@cache[pos] = pos_cache
+        pos_cache
       end
     end
   end
